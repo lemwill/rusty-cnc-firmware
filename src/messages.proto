@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package messages_proto;
+
+message Jog {
+  enum Axis {
+    X = 0;
+    Y = 1; 
+    Z = 2;
+  }
+
+  Axis axis = 1;
+  int32 direction = 2;
+}
+
+message Position {
+    int32 x = 1;
+    int32 y = 2;
+    int32 z = 3;
+}
+message Status { 
+    Position position = 1;
+}
