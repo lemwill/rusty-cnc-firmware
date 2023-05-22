@@ -1,14 +1,17 @@
-use bytes::Bytes;
+use alloc::vec::Vec;
 use defmt::{panic, *};
-use embassy_stm32::gpio::AnyPin;
+use embassy_stm32::interrupt;
 use embassy_stm32::usb_otg::{Driver, Instance};
-use embassy_stm32::{interrupt, Peripherals};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
 use embassy_usb::Builder;
 use futures::future::join;
 extern crate alloc;
-use alloc::vec::Vec;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::channel::{Receiver, Sender};
+
+use crate::items;
+
 pub struct Disconnected {}
 
 impl From<EndpointError> for Disconnected {
@@ -24,68 +27,13 @@ impl From<EndpointError> for Disconnected {
 }
 use prost::Message;
 
-pub mod items {
-    include!(concat!(env!("OUT_DIR"), "/messages_proto.rs"));
-}
-
-pub async fn echo<'d, T: Instance + 'd>(
-    class: &mut CdcAcmClass<'d, Driver<'d, T>>,
-) -> Result<(), Disconnected> {
-    let mut buf = [0; 1024];
-    loop {
-        match class.read_packet(&mut buf).await {
-            Ok(n) => {
-                let data = &buf[..n];
-                info!("data: {:x}", data);
-
-                match items::Jog::decode(data) {
-                    Ok(mut jog) => {
-                        info!("Axis: {:#?}", jog.axis);
-                        info!("Direction: {:#?}", jog.direction);
-                    }
-                    Err(_e) => {
-                        info!("Decode Error");
-                    }
-                }
-
-                match class.write_packet(data).await {
-                    Ok(_) => {
-                        info!("Sending data success");
-                    }
-                    Err(e) => {
-                        info!("Error: {:?}", e);
-                        return Err(Disconnected {});
-                    }
-                }
-            }
-            Err(e) => {
-                info!("Error: {:?}", e);
-            }
-        }
-        // let n = class.read_packet(&mut buf).await?;
-
-        /*match items::Shirt::decode(data) {
-            Ok(mut shirt) => {
-                info!("Color: {:#?}", shirt.color);
-                info!("Color2: {:#?}", shirt.color2);
-
-                shirt.color = shirt.color + 1;
-
-                let mut buf2 = Vec::new();
-                shirt.encode(&mut buf2).unwrap();
-                class.write_packet(&buf2).await?;
-            }
-            Err(_e) => {
-                info!("Decode Error");
-            }
-        }*/
-    }
-}
 #[embassy_executor::task]
 pub async fn init_usb(
     usb_otg_peripheral: embassy_stm32::peripherals::USB_OTG_FS,
     dp: embassy_stm32::peripherals::PA12,
     dn: embassy_stm32::peripherals::PA11,
+    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::Jog, 2>,
+    channel_from_computer: Sender<'static, ThreadModeRawMutex, items::Jog, 2>,
 ) {
     let irq = interrupt::take!(OTG_FS);
     let mut ep_out_buffer = [0u8; 256];
@@ -131,17 +79,79 @@ pub async fn init_usb(
     // Run the USB device.
     let usb_fut = usb.run();
 
+    let (mut sender, mut receiver) = class.split();
+
     // Do stuff with the class!
-    let echo_fut = async {
+    let receive_from_usb_future = async {
         loop {
-            class.wait_connection().await;
+            receiver.wait_connection().await;
             info!("Connected");
-            let _ = echo(&mut class).await;
+            let mut buf = [0; 1024];
+            loop {
+                match receiver.read_packet(&mut buf).await {
+                    Ok(n) => {
+                        let data = &buf[..n];
+                        info!("data: {:x}", data);
+
+                        match items::Jog::decode(data) {
+                            Ok(jog) => {
+                                info!("Jog: {}", jog.axis);
+
+                                match channel_from_computer.try_send(jog) {
+                                    Ok(_) => {
+                                        info!("Sending data success");
+                                    }
+                                    Err(e) => {
+                                        info!("Error sending data to channel");
+                                    }
+                                }
+                            }
+                            Err(_e) => {
+                                info!("Decode Error");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        info!("Error: {:?}", e);
+                    }
+                }
+            }
+            info!("Disconnected");
+        }
+    };
+
+    let write_to_usb_future = async {
+        loop {
+            sender.wait_connection().await;
+            info!("Connected");
+            let mut buf = [0u8; 1024];
+            loop {
+                // Receive data from the channel
+                let jog = channel_to_computer.recv().await;
+                let mut buf = Vec::new();
+                // Encode the received data
+                if let Err(e) = jog.encode(&mut buf) {
+                    info!("Encode Error");
+                } else {
+                    // Write encoded data to USB
+                    match sender.write_packet(&buf).await {
+                        Ok(_) => {
+                            info!("Sending data success");
+                        }
+                        Err(e) => {
+                            info!("Error: {:?}", e);
+                            return;
+                        }
+                    }
+                }
+            }
             info!("Disconnected");
         }
     };
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
-    join(usb_fut, echo_fut).await;
+    join(usb_fut, receive_from_usb_future).await;
+
+    // TODO: JOIN THE THREE TASKS
 }
