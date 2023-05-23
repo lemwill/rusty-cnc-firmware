@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 use defmt::{panic, *};
 use embassy_stm32::interrupt;
-use embassy_stm32::usb_otg::{Driver, Instance};
+use embassy_stm32::usb_otg::Driver;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
 use embassy_usb::Builder;
-use futures::future::join;
+use futures::future::join3;
 extern crate alloc;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
@@ -25,14 +25,15 @@ impl From<EndpointError> for Disconnected {
         }
     }
 }
+
 use prost::Message;
 
 #[embassy_executor::task]
-pub async fn init_usb(
+pub async fn init(
     usb_otg_peripheral: embassy_stm32::peripherals::USB_OTG_FS,
     dp: embassy_stm32::peripherals::PA12,
     dn: embassy_stm32::peripherals::PA11,
-    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::Jog, 2>,
+    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::Status, 2>,
     channel_from_computer: Sender<'static, ThreadModeRawMutex, items::Jog, 2>,
 ) {
     let irq = interrupt::take!(OTG_FS);
@@ -71,7 +72,7 @@ pub async fn init_usb(
     );
 
     // Create classes on the builder.
-    let mut class = CdcAcmClass::new(&mut builder, &mut state, 64);
+    let class = CdcAcmClass::new(&mut builder, &mut state, 64);
 
     // Build the builder.
     let mut usb = builder.build();
@@ -85,27 +86,20 @@ pub async fn init_usb(
     let receive_from_usb_future = async {
         loop {
             receiver.wait_connection().await;
-            info!("Connected");
+            info!("Receive from USB Connected");
             let mut buf = [0; 1024];
             loop {
                 match receiver.read_packet(&mut buf).await {
                     Ok(n) => {
                         let data = &buf[..n];
-                        info!("data: {:x}", data);
 
                         match items::Jog::decode(data) {
-                            Ok(jog) => {
-                                info!("Jog: {}", jog.axis);
-
-                                match channel_from_computer.try_send(jog) {
-                                    Ok(_) => {
-                                        info!("Sending data success");
-                                    }
-                                    Err(e) => {
-                                        info!("Error sending data to channel");
-                                    }
+                            Ok(jog) => match channel_from_computer.try_send(jog) {
+                                Ok(_) => {}
+                                Err(_e) => {
+                                    info!("Error sending data to channel");
                                 }
-                            }
+                            },
                             Err(_e) => {
                                 info!("Decode Error");
                             }
@@ -116,21 +110,23 @@ pub async fn init_usb(
                     }
                 }
             }
-            info!("Disconnected");
+            //info!("Disconnected");
         }
     };
 
     let write_to_usb_future = async {
         loop {
+            info!("Write to USB started");
+
             sender.wait_connection().await;
-            info!("Connected");
-            let mut buf = [0u8; 1024];
+            info!("Write to USB Connected");
+            let buf = [0u8; 1024];
             loop {
                 // Receive data from the channel
                 let jog = channel_to_computer.recv().await;
                 let mut buf = Vec::new();
                 // Encode the received data
-                if let Err(e) = jog.encode(&mut buf) {
+                if let Err(_e) = jog.encode(&mut buf) {
                     info!("Encode Error");
                 } else {
                     // Write encoded data to USB
@@ -145,13 +141,13 @@ pub async fn init_usb(
                     }
                 }
             }
-            info!("Disconnected");
+            //info!("Disconnected");
         }
     };
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
-    join(usb_fut, receive_from_usb_future).await;
+    join3(usb_fut, receive_from_usb_future, write_to_usb_future).await;
 
     // TODO: JOIN THE THREE TASKS
 }
