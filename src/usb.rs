@@ -120,7 +120,6 @@ pub async fn init(
 
             sender.wait_connection().await;
             info!("Write to USB Connected");
-            let buf = [0u8; 1024];
             loop {
                 // Receive data from the channel
                 let jog = channel_to_computer.recv().await;

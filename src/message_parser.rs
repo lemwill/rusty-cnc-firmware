@@ -1,8 +1,6 @@
 use defmt::info;
-use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
-use embassy_time::{Duration, Ticker};
 
 use crate::items;
 
