@@ -92,6 +92,8 @@ pub async fn init(
                 match receiver.read_packet(&mut buf).await {
                     Ok(n) => {
                         let data = &buf[..n];
+                        // Print data
+                        info!("Received data: {}", data);
 
                         match items::Jog::decode(data) {
                             Ok(jog) => match channel_from_computer.try_send(jog) {
@@ -123,6 +125,12 @@ pub async fn init(
             loop {
                 // Receive data from the channel
                 let jog = channel_to_computer.recv().await;
+                if let Some(position) = &jog.position {
+                    info!(
+                        "Updated Position: x = {}, y = {}, z = {}",
+                        position.x, position.y, position.z
+                    );
+                }
                 let mut buf = Vec::new();
                 // Encode the received data
                 if let Err(_e) = jog.encode(&mut buf) {
