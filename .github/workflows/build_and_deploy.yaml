@@ -36,6 +36,8 @@ jobs:
       #    - name: Install cargo embed
       #      run: cargo install cargo-embed
 
+      - name: Install Rust targets
+        run: rustup target add thumbv7em-none-eabihf
       - name: Rust build
         uses: actions-rs/cargo@v1
         with:
