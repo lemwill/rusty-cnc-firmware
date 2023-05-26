@@ -33,8 +33,8 @@ pub async fn init(
     usb_otg_peripheral: embassy_stm32::peripherals::USB_OTG_FS,
     dp: embassy_stm32::peripherals::PA12,
     dn: embassy_stm32::peripherals::PA11,
-    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::Status, 2>,
-    channel_from_computer: Sender<'static, ThreadModeRawMutex, items::Jog, 2>,
+    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::MessageFromCnc, 2>,
+    channel_from_computer: Sender<'static, ThreadModeRawMutex, items::MessageFromInterface, 2>,
 ) {
     let irq = interrupt::take!(OTG_FS);
     let mut ep_out_buffer = [0u8; 256];
@@ -95,8 +95,8 @@ pub async fn init(
                         // Print data
                         info!("Received data: {}", data);
 
-                        match items::Jog::decode(data) {
-                            Ok(jog) => match channel_from_computer.try_send(jog) {
+                        match items::MessageFromInterface::decode(data) {
+                            Ok(message) => match channel_from_computer.try_send(message) {
                                 Ok(_) => {}
                                 Err(_e) => {
                                     info!("Error sending data to channel");
@@ -124,16 +124,11 @@ pub async fn init(
             info!("Write to USB Connected");
             loop {
                 // Receive data from the channel
-                let jog = channel_to_computer.recv().await;
-                if let Some(position) = &jog.position {
-                    info!(
-                        "Updated Position: x = {}, y = {}, z = {}",
-                        position.x, position.y, position.z
-                    );
-                }
+                let message = channel_to_computer.recv().await;
+
                 let mut buf = Vec::new();
                 // Encode the received data
-                if let Err(_e) = jog.encode(&mut buf) {
+                if let Err(_e) = message.encode(&mut buf) {
                     info!("Encode Error");
                 } else {
                     // Write encoded data to USB

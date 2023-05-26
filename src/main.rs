@@ -19,8 +19,9 @@ mod items {
     include!(concat!(env!("OUT_DIR"), "/messages_proto.rs"));
 }
 
-static CHANNEL_TO_COMPUTER: Channel<ThreadModeRawMutex, items::Status, 2> = Channel::new();
-static CHANNEL_FROM_COMPUTER: Channel<ThreadModeRawMutex, items::Jog, 2> = Channel::new();
+static CHANNEL_TO_COMPUTER: Channel<ThreadModeRawMutex, items::MessageFromCnc, 2> = Channel::new();
+static CHANNEL_FROM_COMPUTER: Channel<ThreadModeRawMutex, items::MessageFromInterface, 2> =
+    Channel::new();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {

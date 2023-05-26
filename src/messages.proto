@@ -2,6 +2,15 @@ syntax = "proto3";
 
 package messages_proto;
 
+// From Interface =================================================
+message MessageFromInterface {
+  oneof message {
+    Jog jog = 1;
+    Configuration configuration = 2;
+  }
+}
+
+// Jog Message
 message Jog {
   enum Axis {
     X = 0;
@@ -13,11 +22,45 @@ message Jog {
   int32 direction = 2;
 }
 
-message Position {
-    int32 x = 1;
-    int32 y = 2;
-    int32 z = 3;
+// Configuration Message
+message Configuration {
+  General general = 1;
+  Limits limits = 2;
+  Feedrate feedrate = 3;
 }
+
+message General {
+  int32 junction_deviation = 1;
+}
+
+message Limits {
+  bool invert_limit_x = 1;
+  bool invert_limit_y = 2;
+  bool invert_limit_z = 3;
+}
+
+message Feedrate {
+  int32 rapid_x_feedrate = 1;
+  int32 rapid_y_feedrate = 2;
+  int32 rapid_z_feedrate = 3;
+}
+
+
+
+// From CNC  =================================================
+message MessageFromCnc {
+  oneof message {
+    Status status = 1;
+    Configuration configuration = 2;
+  }
+}
+
 message Status { 
-    Position position = 1;
+  Position position = 1;
+}
+
+message Position {
+  int32 x = 1;
+  int32 y = 2;
+  int32 z = 3;
 }
