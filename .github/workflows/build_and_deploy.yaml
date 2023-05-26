@@ -38,13 +38,13 @@ jobs:
 
       - name: Install Rust targets
         run: rustup target add thumbv7em-none-eabihf
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
       - name: Rust build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
