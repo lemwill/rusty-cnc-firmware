@@ -7,7 +7,7 @@ use embassy_usb::driver::EndpointError;
 use embassy_usb::Builder;
 use futures::future::join3;
 extern crate alloc;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 
 use crate::items;
@@ -33,8 +33,8 @@ pub async fn init(
     usb_otg_peripheral: embassy_stm32::peripherals::USB_OTG_FS,
     dp: embassy_stm32::peripherals::PA12,
     dn: embassy_stm32::peripherals::PA11,
-    channel_to_computer: Receiver<'static, ThreadModeRawMutex, items::MessageFromCnc, 2>,
-    channel_from_computer: Sender<'static, ThreadModeRawMutex, items::MessageFromInterface, 2>,
+    channel_to_computer: Receiver<'static, CriticalSectionRawMutex, items::MessageFromCnc, 2>,
+    channel_from_computer: Sender<'static, CriticalSectionRawMutex, items::MessageFromInterface, 2>,
 ) {
     let irq = interrupt::take!(OTG_FS);
     let mut ep_out_buffer = [0u8; 256];

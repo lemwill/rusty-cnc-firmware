@@ -1,5 +1,5 @@
 use defmt::info;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 
 use crate::items;
@@ -10,8 +10,13 @@ use crate::items::Status;
 
 #[embassy_executor::task]
 pub async fn run(
-    channel_from_computer: Receiver<'static, ThreadModeRawMutex, items::MessageFromInterface, 2>,
-    channel_to_computer: Sender<'static, ThreadModeRawMutex, items::MessageFromCnc, 2>,
+    channel_from_computer: Receiver<
+        'static,
+        CriticalSectionRawMutex,
+        items::MessageFromInterface,
+        2,
+    >,
+    channel_to_computer: Sender<'static, CriticalSectionRawMutex, items::MessageFromCnc, 2>,
 ) {
     let mut position = Position { x: 0, y: 0, z: 0 };
 
